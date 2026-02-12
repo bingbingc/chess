@@ -1,10 +1,9 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import ChessGame from '@/components/ChessBoard';
 import { supabase } from '@/lib/supabase';
-import { Chess } from 'chess.js';
 import { ArrowLeft, Share2 } from 'lucide-react';
 
 export default function GamePage() {
