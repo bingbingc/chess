@@ -8,31 +8,23 @@ import confetti from 'canvas-confetti';
 interface ChessGameProps {
     gameId: string;
     initialFen?: string;
-    onMove?: (move: any) => void;
+    onMove?: (move: { san: string; from: string; to: string; before: string; after: string }) => void;
     orientation?: 'white' | 'black';
 }
 
-export default function ChessGame({ gameId, initialFen, onMove, orientation = 'white' }: ChessGameProps) {
+export default function ChessGame({ initialFen, onMove, orientation = 'white' }: Omit<ChessGameProps, 'gameId'>) {
     const [game, setGame] = useState(new Chess(initialFen));
     const [moveFrom, setMoveFrom] = useState<string | null>(null);
-    const [rightClickedSquares, setRightClickedSquares] = useState<any>({});
-    const [moveSquares, setMoveSquares] = useState<any>({});
-    const [optionSquares, setOptionSquares] = useState<any>({});
+    const [rightClickedSquares, setRightClickedSquares] = useState<Record<string, { backgroundColor: string } | undefined>>({});
+    const [optionSquares, setOptionSquares] = useState<Record<string, { background: string; borderRadius?: string }>>({});
     const moveAudio = useRef<HTMLAudioElement | null>(null);
 
     useEffect(() => {
         moveAudio.current = new Audio('https://images.vchess.club/move.mp3');
     }, []);
 
-    function safeGameMutate(modify: (arg: Chess) => void) {
-        setGame((g) => {
-            const update = new Chess(g.fen());
-            modify(update);
-            return update;
-        });
-    }
 
-    const makeAMove = useCallback((move: any) => {
+    const makeAMove = useCallback((move: { from: string; to: string; promotion?: string }) => {
         try {
             const result = game.move(move);
             if (result) {
@@ -50,7 +42,7 @@ export default function ChessGame({ gameId, initialFen, onMove, orientation = 'w
                 if (onMove) onMove(result);
             }
             return result;
-        } catch (e) {
+        } catch {
             return null;
         }
     }, [game, onMove]);
@@ -112,8 +104,8 @@ export default function ChessGame({ gameId, initialFen, onMove, orientation = 'w
             return;
         }
 
-        const newSquares: any = {};
-        moves.map((move: any) => {
+        const newSquares: Record<string, { background: string; borderRadius?: string }> = {};
+        moves.map((move) => {
             const pieceAtSquare = game.get(move.to);
             const pieceAtSource = game.get(square as any);
             newSquares[move.to] = {
@@ -152,10 +144,9 @@ export default function ChessGame({ gameId, initialFen, onMove, orientation = 'w
                     onSquareRightClick: ({ square }) => onSquareRightClick(square),
                     boardOrientation: orientation,
                     squareStyles: {
-                        ...moveSquares,
                         ...optionSquares,
-                        ...rightClickedSquares,
-                    }
+                        ...(rightClickedSquares as any),
+                    } as any
                 }}
             />
             <div className="game-info">

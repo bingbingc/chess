@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import ChessGame from '@/components/ChessBoard';
 import { supabase } from '@/lib/supabase';
 import { Chess } from 'chess.js';
-import { Copy, ArrowLeft, Share2 } from 'lucide-react';
+import { ArrowLeft, Share2 } from 'lucide-react';
 
 export default function GamePage() {
     const { id: gameId } = useParams();
@@ -21,7 +21,7 @@ export default function GamePage() {
 
     useEffect(() => {
         const fetchGame = async () => {
-            const { data: game, error } = await supabase
+            const { data: game } = await supabase
                 .from('games')
                 .select('*')
                 .eq('id', gameId)
@@ -78,7 +78,7 @@ export default function GamePage() {
         };
     }, [gameId]);
 
-    const handleMove = useCallback(async (move: any) => {
+    const handleMove = useCallback(async (move: { san: string; from: string; to: string; before: string; after: string }) => {
         // Only persist move if it's an online game and it's the player's turn (simplified check)
         if (!gameId || gameId === 'local-game') return;
 
@@ -127,7 +127,6 @@ export default function GamePage() {
                 <div className="game-grid">
                     <div>
                         <ChessGame
-                            gameId={gameId as string}
                             initialFen={fen}
                             onMove={handleMove}
                             orientation={playerColor || 'white'}

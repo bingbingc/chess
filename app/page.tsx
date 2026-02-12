@@ -13,7 +13,7 @@ export default function Home() {
   const createGame = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('games')
         .insert({
           status: 'playing',
@@ -22,10 +22,8 @@ export default function Home() {
         .select()
         .single();
 
-      if (error) throw error;
       if (data) router.push(`/game/${data.id}`);
-    } catch (error) {
-      console.error('Error creating game:', error);
+    } catch {
       alert('Failed to create game. Please check your Supabase configuration.');
     } finally {
       setLoading(false);
@@ -46,7 +44,7 @@ export default function Home() {
               <Zap size={20} color="var(--primary)" />
               <h3 style={{ margin: 0 }}>Local Sandbox</h3>
             </div>
-            <ChessGame gameId="local-game" />
+            <ChessGame />
           </div>
 
           <div className="game-controls">
