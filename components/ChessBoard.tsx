@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Chessboard } from 'react-chessboard';
-import { Chess } from 'chess.js';
+import { Chess, Square } from 'chess.js';
 import confetti from 'canvas-confetti';
+import { CSSProperties } from 'react';
 
 interface ChessGameProps {
     gameId: string;
@@ -15,8 +16,8 @@ interface ChessGameProps {
 export default function ChessGame({ initialFen, onMove, orientation = 'white' }: Omit<ChessGameProps, 'gameId'>) {
     const [game, setGame] = useState(new Chess(initialFen));
     const [moveFrom, setMoveFrom] = useState<string | null>(null);
-    const [rightClickedSquares, setRightClickedSquares] = useState<Record<string, { backgroundColor: string } | undefined>>({});
-    const [optionSquares, setOptionSquares] = useState<Record<string, { background: string; borderRadius?: string }>>({});
+    const [rightClickedSquares, setRightClickedSquares] = useState<Record<string, CSSProperties | undefined>>({});
+    const [optionSquares, setOptionSquares] = useState<Record<string, CSSProperties>>({});
     const moveAudio = useRef<HTMLAudioElement | null>(null);
 
     useEffect(() => {
@@ -63,7 +64,7 @@ export default function ChessGame({ initialFen, onMove, orientation = 'white' }:
 
         // from square
         if (!moveFrom) {
-            const hasPiece = game.get(square as any);
+            const hasPiece = game.get(square as Square);
             if (hasPiece && hasPiece.color === (orientation === 'white' ? 'w' : 'b')) {
                 setMoveFrom(square);
                 getMoveOptions(square);
@@ -79,7 +80,7 @@ export default function ChessGame({ initialFen, onMove, orientation = 'white' }:
         });
 
         if (move === null) {
-            const hasPiece = game.get(square as any);
+            const hasPiece = game.get(square as Square);
             if (hasPiece && hasPiece.color === (orientation === 'white' ? 'w' : 'b')) {
                 setMoveFrom(square);
                 getMoveOptions(square);
@@ -96,7 +97,7 @@ export default function ChessGame({ initialFen, onMove, orientation = 'white' }:
 
     function getMoveOptions(square: string) {
         const moves = game.moves({
-            square: square as any,
+            square: square as Square,
             verbose: true,
         });
         if (moves.length === 0) {
@@ -104,10 +105,10 @@ export default function ChessGame({ initialFen, onMove, orientation = 'white' }:
             return;
         }
 
-        const newSquares: Record<string, { background: string; borderRadius?: string }> = {};
+        const newSquares: Record<string, CSSProperties> = {};
         moves.map((move) => {
             const pieceAtSquare = game.get(move.to);
-            const pieceAtSource = game.get(square as any);
+            const pieceAtSource = game.get(square as Square);
             newSquares[move.to] = {
                 background:
                     pieceAtSquare && pieceAtSource && pieceAtSquare.color !== pieceAtSource.color
@@ -145,8 +146,8 @@ export default function ChessGame({ initialFen, onMove, orientation = 'white' }:
                     boardOrientation: orientation,
                     squareStyles: {
                         ...optionSquares,
-                        ...(rightClickedSquares as any),
-                    } as any
+                        ...rightClickedSquares,
+                    } as Record<string, CSSProperties>
                 }}
             />
             <div className="game-info">
