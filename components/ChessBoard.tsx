@@ -19,6 +19,7 @@ export default function ChessGame({ initialFen, onMove, orientation = 'white' }:
     const [rightClickedSquares, setRightClickedSquares] = useState<Record<string, CSSProperties | undefined>>({});
     const [optionSquares, setOptionSquares] = useState<Record<string, CSSProperties>>({});
     const moveAudio = useRef<HTMLAudioElement | null>(null);
+    const isLocal = !onMove;
 
     useEffect(() => {
         const url = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -42,6 +43,13 @@ export default function ChessGame({ initialFen, onMove, orientation = 'white' }:
 
 
     const makeAMove = useCallback((move: { from: string; to: string; promotion?: string }) => {
+        // Guard for online games: only allow moves if it's the player's turn
+        if (!isLocal) {
+            const turnColor = game.turn();
+            const playerColor = orientation === 'white' ? 'w' : 'b';
+            if (turnColor !== playerColor) return null;
+        }
+
         try {
             const result = game.move(move);
             if (result) {
@@ -81,7 +89,9 @@ export default function ChessGame({ initialFen, onMove, orientation = 'white' }:
         // from square
         if (!moveFrom) {
             const hasPiece = game.get(square as Square);
-            if (hasPiece && hasPiece.color === (orientation === 'white' ? 'w' : 'b')) {
+            const canSelect = hasPiece && (isLocal ? hasPiece.color === game.turn() : hasPiece.color === (orientation === 'white' ? 'w' : 'b'));
+
+            if (canSelect) {
                 setMoveFrom(square);
                 getMoveOptions(square);
             }
@@ -97,7 +107,9 @@ export default function ChessGame({ initialFen, onMove, orientation = 'white' }:
 
         if (move === null) {
             const hasPiece = game.get(square as Square);
-            if (hasPiece && hasPiece.color === (orientation === 'white' ? 'w' : 'b')) {
+            const canSelect = hasPiece && (isLocal ? hasPiece.color === game.turn() : hasPiece.color === (orientation === 'white' ? 'w' : 'b'));
+
+            if (canSelect) {
                 setMoveFrom(square);
                 getMoveOptions(square);
             } else {
