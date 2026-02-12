@@ -14,6 +14,7 @@ export default function GamePage() {
     const [playerColor, setPlayerColor] = useState<'white' | 'black' | null>(null);
     const [gameStatus, setGameStatus] = useState('loading');
     const [moves, setMoves] = useState<string[]>([]);
+    const [drawOfferedBy, setDrawOfferedBy] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);
 
     useEffect(() => {
@@ -27,6 +28,7 @@ export default function GamePage() {
             if (game) {
                 setFen(game.fen);
                 setGameStatus(game.status);
+                setDrawOfferedBy(game.draw_offered_by);
 
                 // Fetch moves history for this game
                 const { data: movesData } = await supabase
@@ -82,6 +84,7 @@ export default function GamePage() {
                 },
                 (payload) => {
                     setGameStatus(payload.new.status);
+                    setDrawOfferedBy(payload.new.draw_offered_by);
                 }
             )
             .subscribe();
@@ -112,6 +115,34 @@ export default function GamePage() {
             await supabase.from('games').update({ fen: move.after }).eq('id', gameId);
         }
     }, [gameId, moves.length]);
+
+    const handleResign = async () => {
+        if (!gameId || gameId === 'local-game' || !playerColor) return;
+        if (!confirm('Are you sure you want to resign?')) return;
+
+        await supabase.from('games').update({
+            status: 'finished',
+            winner_id: playerColor === 'white' ? null : null // Should ideally set the opponent ID
+        }).eq('id', gameId);
+    };
+
+    const handleOfferDraw = async () => {
+        if (!gameId || gameId === 'local-game' || !playerColor) return;
+        await supabase.from('games').update({ draw_offered_by: playerColor }).eq('id', gameId);
+    };
+
+    const handleAcceptDraw = async () => {
+        if (!gameId || gameId === 'local-game') return;
+        await supabase.from('games').update({
+            status: 'draw',
+            draw_offered_by: null
+        }).eq('id', gameId);
+    };
+
+    const handleDeclineDraw = async () => {
+        if (!gameId || gameId === 'local-game') return;
+        await supabase.from('games').update({ draw_offered_by: null }).eq('id', gameId);
+    };
 
     const copyLink = () => {
         navigator.clipboard.writeText(window.location.href);
@@ -162,6 +193,28 @@ export default function GamePage() {
                                 >
                                     {copied ? 'Copied!' : <><Share2 size={16} /> Copy Invite Link</>}
                                 </button>
+
+                                {gameStatus === 'playing' && playerColor && (
+                                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                        <button onClick={handleResign} className="btn" style={{ flex: 1, background: 'rgba(239, 68, 68, 0.2)', border: '1px solid #ef4444', color: '#ef4444' }}>
+                                            Resign
+                                        </button>
+                                        {!drawOfferedBy ? (
+                                            <button onClick={handleOfferDraw} className="btn" style={{ flex: 1, background: 'rgba(59, 130, 246, 0.2)', border: '1px solid #3b82f6', color: '#3b82f6' }}>
+                                                Offer Draw
+                                            </button>
+                                        ) : drawOfferedBy !== playerColor ? (
+                                            <div style={{ display: 'flex', gap: '0.5rem', flex: 1 }}>
+                                                <button onClick={handleAcceptDraw} className="btn" style={{ flex: 1, background: '#22c55e', color: 'white', fontSize: '0.8rem' }}>Accept 1/2</button>
+                                                <button onClick={handleDeclineDraw} className="btn" style={{ flex: 1, background: '#ef4444', color: 'white', fontSize: '0.8rem' }}>Decline</button>
+                                            </div>
+                                        ) : (
+                                            <div className="btn" style={{ flex: 1, background: 'rgba(255,255,255,0.05)', color: 'white', opacity: 0.5, cursor: 'not-allowed', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                Draw Offered...
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                             </div>
 
                             <div style={{ marginTop: '2rem' }}>

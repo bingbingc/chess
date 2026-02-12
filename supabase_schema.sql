@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS games (
   fen TEXT DEFAULT 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
   status TEXT DEFAULT 'waiting', -- waiting, playing, finished, draw
   winner_id UUID REFERENCES profiles(id),
+  draw_offered_by TEXT, -- 'white', 'black', or null
   created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW())
 );

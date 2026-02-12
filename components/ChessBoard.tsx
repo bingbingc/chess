@@ -36,11 +36,11 @@ export default function ChessGame({ initialFen, onMove, orientation = 'white' }:
 
     // Keep internal game state in sync with initialFen prop (for real-time updates)
     useEffect(() => {
-        if (initialFen && initialFen !== (typeof game === 'string' ? game : game.fen())) {
+        if (initialFen && initialFen !== game.fen()) {
             const newGame = new Chess(initialFen);
             setGame(newGame);
         }
-    }, [initialFen]);
+    }, [initialFen, game]);
 
     // Play sound when the board changes
     useEffect(() => {
@@ -63,7 +63,57 @@ export default function ChessGame({ initialFen, onMove, orientation = 'white' }:
         }
 
         try {
-            const result = game.move(move);
+            let result = game.move(move);
+
+            // King Movement Variant: If standard move fails, check if it's a King moving to an adjacent square
+            if (!result) {
+                const piece = game.get(move.from as Square);
+                if (piece && piece.type === 'k') {
+                    // Manually calculate distance
+                    const fromPos = move.from;
+                    const toPos = move.to;
+                    const fromCol = fromPos.charCodeAt(0);
+                    const fromRow = parseInt(fromPos[1]);
+                    const toCol = toPos.charCodeAt(0);
+                    const toRow = parseInt(toPos[1]);
+
+                    const colDiff = Math.abs(fromCol - toCol);
+                    const rowDiff = Math.abs(fromRow - toRow);
+
+                    if (colDiff <= 1 && rowDiff <= 1) {
+                        // This is an adjacent move. Manually update FEN to permit "suicidal" moves
+                        const tempGame = new Chess(game.fen());
+                        const pieceToMove = tempGame.remove(move.from as Square);
+                        if (pieceToMove) {
+                            tempGame.put(pieceToMove, move.to as Square);
+                            // Toggle turn manually
+                            const fenParts = tempGame.fen().split(' ');
+                            fenParts[1] = fenParts[1] === 'w' ? 'b' : 'w';
+                            // Reset half-move clock and increment full-move if black moved
+                            fenParts[4] = '0';
+                            if (pieceToMove.color === 'b') {
+                                fenParts[5] = (parseInt(fenParts[5]) + 1).toString();
+                            }
+                            const nextFen = fenParts.join(' ');
+
+                            // Load the artificial state
+                            game.load(nextFen);
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                            result = {
+                                color: pieceToMove.color,
+                                from: move.from as Square,
+                                to: move.to as Square,
+                                piece: pieceToMove.type,
+                                flags: 'n',
+                                san: `K${move.to}`,
+                                before: move.from,
+                                after: nextFen
+                            } as any;
+                        }
+                    }
+                }
+            }
+
             if (result) {
                 setGame(new Chess(game.fen()));
 
@@ -139,12 +189,11 @@ export default function ChessGame({ initialFen, onMove, orientation = 'white' }:
             square: square as Square,
             verbose: true,
         });
-        if (moves.length === 0) {
-            setOptionSquares({});
-            return;
-        }
 
+        const piece = game.get(square as Square);
         const newSquares: Record<string, CSSProperties> = {};
+
+        // standard moves
         moves.map((move) => {
             const pieceAtSquare = game.get(move.to);
             const pieceAtSource = game.get(square as Square);
@@ -157,6 +206,38 @@ export default function ChessGame({ initialFen, onMove, orientation = 'white' }:
             };
             return move;
         });
+
+        // King Movement Variant: Show adjacent squares as valid even if under attack
+        if (piece && piece.type === 'k') {
+            const col = square.charCodeAt(0);
+            const row = parseInt(square[1]);
+
+            for (let i = -1; i <= 1; i++) {
+                for (let j = -1; j <= 1; j++) {
+                    if (i === 0 && j === 0) continue;
+                    const nextCol = col + i;
+                    const nextRow = row + j;
+
+                    if (nextCol >= 97 && nextCol <= 104 && nextRow >= 1 && nextRow <= 8) {
+                        const targetSquare = String.fromCharCode(nextCol) + nextRow;
+                        const targetPiece = game.get(targetSquare as Square);
+
+                        // Can move if square is empty or has opponent piece
+                        if (!targetPiece || targetPiece.color !== piece.color) {
+                            if (!newSquares[targetSquare]) {
+                                newSquares[targetSquare] = {
+                                    background: targetPiece
+                                        ? 'radial-gradient(circle, rgba(0,0,0,.1) 85%, transparent 85%)'
+                                        : 'radial-gradient(circle, rgba(0,0,0,.1) 35%, transparent 35%)',
+                                    borderRadius: '50%',
+                                };
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         newSquares[square] = {
             background: 'rgba(255, 255, 0, 0.4)',
         };
