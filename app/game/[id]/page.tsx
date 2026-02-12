@@ -17,9 +17,6 @@ export default function GamePage() {
     const [moves, setMoves] = useState<string[]>([]);
     const [copied, setCopied] = useState(false);
 
-    // Reconstruct the game object from the current FEN to validate potential moves
-    const currentGameState = useMemo(() => new Chess(fen), [fen]);
-
     useEffect(() => {
         const fetchGame = async () => {
             const { data: game } = await supabase
