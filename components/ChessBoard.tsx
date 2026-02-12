@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Chessboard } from 'react-chessboard';
-import { Chess, Square } from 'chess.js';
+import { Chess, Square, Move } from 'chess.js';
 import confetti from 'canvas-confetti';
 import { CSSProperties } from 'react';
 
@@ -99,7 +99,6 @@ export default function ChessGame({ initialFen, onMove, orientation = 'white', p
 
                             // Load the artificial state
                             game.load(nextFen);
-                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
                             result = {
                                 color: pieceToMove.color,
                                 from: move.from as Square,
@@ -109,7 +108,7 @@ export default function ChessGame({ initialFen, onMove, orientation = 'white', p
                                 san: `K${move.to}`,
                                 before: move.from,
                                 after: nextFen
-                            } as any;
+                            } as unknown as Move;
                         }
                     }
                 }
