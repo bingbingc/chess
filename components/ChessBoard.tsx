@@ -36,10 +36,22 @@ export default function ChessGame({ initialFen, onMove, orientation = 'white' }:
 
     // Keep internal game state in sync with initialFen prop (for real-time updates)
     useEffect(() => {
-        if (initialFen && initialFen !== game.fen()) {
-            setGame(new Chess(initialFen));
+        if (initialFen && initialFen !== (typeof game === 'string' ? game : game.fen())) {
+            const newGame = new Chess(initialFen);
+            setGame(newGame);
         }
-    }, [initialFen, game]);
+    }, [initialFen]);
+
+    // Play sound when the board changes
+    useEffect(() => {
+        if (game.history().length > 0) {
+            if (moveAudio.current) {
+                moveAudio.current.play().catch((err) => {
+                    console.log('Audio play failed (likely browser restriction):', err);
+                });
+            }
+        }
+    }, [game]);
 
 
     const makeAMove = useCallback((move: { from: string; to: string; promotion?: string }) => {
@@ -54,7 +66,6 @@ export default function ChessGame({ initialFen, onMove, orientation = 'white' }:
             const result = game.move(move);
             if (result) {
                 setGame(new Chess(game.fen()));
-                if (moveAudio.current) moveAudio.current.play().catch(() => { });
 
                 if (game.isCheckmate()) {
                     confetti({
