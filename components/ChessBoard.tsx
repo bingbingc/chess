@@ -70,7 +70,7 @@ export default function ChessGame({ initialFen, onMove, orientation = 'white' }:
         } catch {
             return null;
         }
-    }, [game, onMove]);
+    }, [game, onMove, isLocal, orientation]);
 
     function onDrop(sourceSquare: string, targetSquare: string) {
         const move = makeAMove({
