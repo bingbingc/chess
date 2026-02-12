@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Chessboard } from 'react-chessboard';
 import { Chess, Square } from 'chess.js';
+import { supabase } from '@/lib/supabase';
 import confetti from 'canvas-confetti';
 import { CSSProperties } from 'react';
 
@@ -21,8 +22,24 @@ export default function ChessGame({ initialFen, onMove, orientation = 'white' }:
     const moveAudio = useRef<HTMLAudioElement | null>(null);
 
     useEffect(() => {
-        moveAudio.current = new Audio('https://images.vchess.club/move.mp3');
+        const url = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+        const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+
+        console.log('--- Supabase Auth Info ---');
+        console.log('URL:', url);
+        console.log('Key Format Check:', key.startsWith('ey') ? '✅ JWT (Standard)' : '❌ Not JWT');
+        console.log('Key Length:', key.length);
+        console.log('Key Prefix:', key.substring(0, 10));
+
+        moveAudio.current = new Audio('https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3');
     }, []);
+
+    // Keep internal game state in sync with initialFen prop (for real-time updates)
+    useEffect(() => {
+        if (initialFen && initialFen !== game.fen()) {
+            setGame(new Chess(initialFen));
+        }
+    }, [initialFen, game]);
 
 
     const makeAMove = useCallback((move: { from: string; to: string; promotion?: string }) => {

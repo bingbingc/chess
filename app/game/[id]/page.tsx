@@ -14,10 +14,11 @@ export default function GamePage() {
     const [loading, setLoading] = useState(true);
     const [playerColor, setPlayerColor] = useState<'white' | 'black' | null>(null);
     const [gameStatus, setGameStatus] = useState('loading');
+    const [moves, setMoves] = useState<string[]>([]);
     const [copied, setCopied] = useState(false);
 
-    // Memoize the game instance to avoid recreation on every render
-    const initialGame = useMemo(() => new Chess(fen), [fen]);
+    // Reconstruct the game object from the current FEN to validate potential moves
+    const currentGameState = useMemo(() => new Chess(fen), [fen]);
 
     useEffect(() => {
         const fetchGame = async () => {
@@ -30,6 +31,17 @@ export default function GamePage() {
             if (game) {
                 setFen(game.fen);
                 setGameStatus(game.status);
+
+                // Fetch moves history for this game
+                const { data: movesData } = await supabase
+                    .from('moves')
+                    .select('notation')
+                    .eq('game_id', gameId)
+                    .order('move_number', { ascending: true });
+
+                if (movesData) {
+                    setMoves(movesData.map(m => m.notation));
+                }
 
                 // Determine player color based on user session
                 const { data: { user } } = await supabase.auth.getUser();
@@ -57,6 +69,11 @@ export default function GamePage() {
                 (payload) => {
                     console.log('New move received:', payload.new);
                     setFen(payload.new.fen_after);
+                    setMoves(prev => {
+                        // Avoid duplicates if we are the one who made the move
+                        if (prev[prev.length - 1] === payload.new.notation) return prev;
+                        return [...prev, payload.new.notation];
+                    });
                 }
             )
             .on(
@@ -84,7 +101,7 @@ export default function GamePage() {
 
         const { error } = await supabase.from('moves').insert({
             game_id: gameId as string,
-            move_number: initialGame.history().length,
+            move_number: moves.length + 1,
             notation: move.san,
             from_square: move.from,
             to_square: move.to,
@@ -98,7 +115,7 @@ export default function GamePage() {
             // Update game FEN in games table
             await supabase.from('games').update({ fen: move.after }).eq('id', gameId);
         }
-    }, [gameId, initialGame]);
+    }, [gameId, moves.length]);
 
     const copyLink = () => {
         navigator.clipboard.writeText(window.location.href);
@@ -154,7 +171,7 @@ export default function GamePage() {
                             <div style={{ marginTop: '2rem' }}>
                                 <h4 style={{ marginBottom: '1rem', opacity: 0.7 }}>Move History</h4>
                                 <div className="move-history" style={{ maxHeight: '300px', overflowY: 'auto', display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.5rem' }}>
-                                    {initialGame.history().map((m, i) => (
+                                    {moves.map((m, i) => (
                                         <div key={i} style={{ padding: '0.5rem', background: 'rgba(255,255,255,0.05)', borderRadius: '6px', fontSize: '0.9rem' }}>
                                             {i % 2 === 0 ? <span style={{ opacity: 0.4, marginRight: '0.5rem' }}>{Math.floor(i / 2) + 1}.</span> : ''}
                                             <span style={{ fontWeight: 600 }}>{m}</span>
