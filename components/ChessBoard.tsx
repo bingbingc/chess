@@ -11,9 +11,10 @@ interface ChessGameProps {
     initialFen?: string;
     onMove?: (move: { san: string; from: string; to: string; before: string; after: string }) => void;
     orientation?: 'white' | 'black';
+    playerColor?: 'white' | 'black' | null;
 }
 
-export default function ChessGame({ initialFen, onMove, orientation = 'white' }: Omit<ChessGameProps, 'gameId'>) {
+export default function ChessGame({ initialFen, onMove, orientation = 'white', playerColor }: Omit<ChessGameProps, 'gameId'>) {
     const [game, setGame] = useState(new Chess(initialFen));
     const [moveFrom, setMoveFrom] = useState<string | null>(null);
     const [rightClickedSquares, setRightClickedSquares] = useState<Record<string, CSSProperties | undefined>>({});
@@ -58,8 +59,8 @@ export default function ChessGame({ initialFen, onMove, orientation = 'white' }:
         // Guard for online games: only allow moves if it's the player's turn
         if (!isLocal) {
             const turnColor = game.turn();
-            const playerColor = orientation === 'white' ? 'w' : 'b';
-            if (turnColor !== playerColor) return null;
+            const pColor = playerColor === 'white' ? 'w' : 'b';
+            if (turnColor !== pColor) return null;
         }
 
         try {
@@ -131,7 +132,7 @@ export default function ChessGame({ initialFen, onMove, orientation = 'white' }:
         } catch {
             return null;
         }
-    }, [game, onMove, isLocal, orientation]);
+    }, [game, onMove, isLocal, playerColor]);
 
     function onDrop(sourceSquare: string, targetSquare: string) {
         const move = makeAMove({
@@ -150,7 +151,13 @@ export default function ChessGame({ initialFen, onMove, orientation = 'white' }:
         // from square
         if (!moveFrom) {
             const hasPiece = game.get(square as Square);
-            const canSelect = hasPiece && (isLocal ? hasPiece.color === game.turn() : hasPiece.color === (orientation === 'white' ? 'w' : 'b'));
+
+            // Online mode: only allow selection if player matches piece color
+            const canSelect = hasPiece && (
+                isLocal
+                    ? hasPiece.color === game.turn()
+                    : (playerColor && hasPiece.color === (playerColor === 'white' ? 'w' : 'b'))
+            );
 
             if (canSelect) {
                 setMoveFrom(square);
@@ -168,7 +175,11 @@ export default function ChessGame({ initialFen, onMove, orientation = 'white' }:
 
         if (move === null) {
             const hasPiece = game.get(square as Square);
-            const canSelect = hasPiece && (isLocal ? hasPiece.color === game.turn() : hasPiece.color === (orientation === 'white' ? 'w' : 'b'));
+            const canSelect = hasPiece && (
+                isLocal
+                    ? hasPiece.color === game.turn()
+                    : (playerColor && hasPiece.color === (playerColor === 'white' ? 'w' : 'b'))
+            );
 
             if (canSelect) {
                 setMoveFrom(square);

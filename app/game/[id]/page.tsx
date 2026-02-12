@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import ChessGame from '@/components/ChessBoard';
 import { supabase } from '@/lib/supabase';
+import { Chess } from 'chess.js';
 import { ArrowLeft, Share2 } from 'lucide-react';
 
 export default function GamePage() {
@@ -16,6 +17,44 @@ export default function GamePage() {
     const [moves, setMoves] = useState<string[]>([]);
     const [drawOfferedBy, setDrawOfferedBy] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);
+    const [replayMode, setReplayMode] = useState(false);
+    const [replayMoves, setReplayMoves] = useState<string[]>([]);
+    const [replayIndex, setReplayIndex] = useState(-1);
+
+    const cleanupMoves = useCallback(async () => {
+        if (!gameId || gameId === 'local-game') return;
+        await supabase.from('moves').delete().eq('game_id', gameId);
+    }, [gameId]);
+
+    const handleMove = useCallback(async (move: { san: string; from: string; to: string; before: string; after: string }) => {
+        if (!gameId || gameId === 'local-game' || replayMode) return;
+
+        // Final guard: only assigned players can move their color
+        if (!playerColor) return;
+
+        const turn = moves.length % 2 === 0 ? 'white' : 'black';
+        if (playerColor !== turn) return;
+
+        const { error } = await supabase.from('moves').insert({
+            game_id: gameId as string,
+            move_number: moves.length + 1,
+            notation: move.san,
+            from_square: move.from,
+            to_square: move.to,
+            fen_before: move.before,
+            fen_after: move.after,
+        });
+
+        if (error) {
+            console.error('Error saving move:', error);
+        } else {
+            // Update game FEN in games table
+            await supabase.from('games').update({
+                fen: move.after,
+                updated_at: new Date().toISOString()
+            }).eq('id', gameId);
+        }
+    }, [gameId, moves.length, playerColor, replayMode]);
 
     useEffect(() => {
         const fetchGame = async () => {
@@ -41,17 +80,40 @@ export default function GamePage() {
                     setMoves(movesData.map(m => m.notation));
                 }
 
-                // Determine player color based on user session
+                // Determine player color and assign if spot is open
                 const { data: { user } } = await supabase.auth.getUser();
                 if (user) {
-                    if (user.id === game.white_player_id) setPlayerColor('white');
-                    else if (user.id === game.black_player_id) setPlayerColor('black');
+                    let assignedColor: 'white' | 'black' | null = null;
+                    if (user.id === game.white_player_id) assignedColor = 'white';
+                    else if (user.id === game.black_player_id) assignedColor = 'black';
+                    else if (!game.white_player_id) {
+                        await supabase.from('games').update({ white_player_id: user.id }).eq('id', gameId);
+                        assignedColor = 'white';
+                    } else if (!game.black_player_id) {
+                        await supabase.from('games').update({ black_player_id: user.id }).eq('id', gameId);
+                        assignedColor = 'black';
+                    }
+                    setPlayerColor(assignedColor);
                 }
             }
             setLoading(false);
         };
 
         if (gameId) fetchGame();
+
+        // Cleanup moves if the user closes the tab mid-game
+        const handleBeforeUnload = () => {
+            if (gameStatus === 'playing') {
+                // We use sendBeacon or a synchronous-like fire-and-forget for cleanup
+                // But since we are using Supabase, we'll try a simple delete
+                // Note: this is best-effort
+                if (gameId && gameId !== 'local-game') {
+                    cleanupMoves();
+                }
+            }
+        };
+
+        window.addEventListener('beforeunload', handleBeforeUnload);
 
         // Subscribe to moves
         const channel = supabase
@@ -91,30 +153,9 @@ export default function GamePage() {
 
         return () => {
             supabase.removeChannel(channel);
+            window.removeEventListener('beforeunload', handleBeforeUnload);
         };
-    }, [gameId]);
-
-    const handleMove = useCallback(async (move: { san: string; from: string; to: string; before: string; after: string }) => {
-        // Only persist move if it's an online game and it's the player's turn (simplified check)
-        if (!gameId || gameId === 'local-game') return;
-
-        const { error } = await supabase.from('moves').insert({
-            game_id: gameId as string,
-            move_number: moves.length + 1,
-            notation: move.san,
-            from_square: move.from,
-            to_square: move.to,
-            fen_before: move.before,
-            fen_after: move.after,
-        });
-
-        if (error) {
-            console.error('Error saving move:', error);
-        } else {
-            // Update game FEN in games table
-            await supabase.from('games').update({ fen: move.after }).eq('id', gameId);
-        }
-    }, [gameId, moves.length]);
+    }, [gameId, gameStatus, cleanupMoves]);
 
     const handleResign = async () => {
         if (!gameId || gameId === 'local-game' || !playerColor) return;
@@ -122,8 +163,10 @@ export default function GamePage() {
 
         await supabase.from('games').update({
             status: 'finished',
-            winner_id: playerColor === 'white' ? null : null // Should ideally set the opponent ID
+            winner_id: playerColor === 'white' ? null : null // logic could be improved to set opponent
         }).eq('id', gameId);
+
+        await cleanupMoves();
     };
 
     const handleOfferDraw = async () => {
@@ -137,11 +180,79 @@ export default function GamePage() {
             status: 'draw',
             draw_offered_by: null
         }).eq('id', gameId);
+        await cleanupMoves();
     };
 
     const handleDeclineDraw = async () => {
         if (!gameId || gameId === 'local-game') return;
         await supabase.from('games').update({ draw_offered_by: null }).eq('id', gameId);
+    };
+
+    const downloadHistoryJson = () => {
+        const data = {
+            game_id: gameId,
+            moves: moves,
+            timestamp: new Date().toISOString()
+        };
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `chess-game-${gameId}.json`;
+        a.click();
+    };
+
+    const handleJsonUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            try {
+                const json = JSON.parse(event.target?.result as string);
+                if (json.moves && Array.isArray(json.moves)) {
+                    setReplayMoves(json.moves);
+                    setReplayMode(true);
+                    setReplayIndex(-1);
+                    setFen('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1');
+                }
+            } catch {
+                alert('Invalid JSON file');
+            }
+        };
+        reader.readAsText(file);
+    };
+
+    const advanceReplay = () => {
+        if (replayIndex < replayMoves.length - 1) {
+            const nextIndex = replayIndex + 1;
+            setReplayIndex(nextIndex);
+
+            // Reconstruct FEN using a temporary chess instance
+            const temp = new Chess('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1');
+            for (let i = 0; i <= nextIndex; i++) {
+                temp.move(replayMoves[i]);
+            }
+            setFen(temp.fen());
+        }
+    };
+
+    const backReplay = () => {
+        if (replayIndex >= 0) {
+            const nextIndex = replayIndex - 1;
+            setReplayIndex(nextIndex);
+            const temp = new Chess('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1');
+            for (let i = 0; i <= nextIndex; i++) {
+                temp.move(replayMoves[i]);
+            }
+            setFen(temp.fen());
+        }
+    };
+
+    const exitReplay = () => {
+        setReplayMode(false);
+        // Refresh state from DB
+        router.refresh();
     };
 
     const copyLink = () => {
@@ -160,11 +271,11 @@ export default function GamePage() {
                         <ArrowLeft size={20} /> Back
                     </button>
                     <div style={{ textAlign: 'center' }}>
-                        <h2 style={{ margin: 0 }}>Online Match</h2>
+                        <h2 style={{ margin: 0 }}>{replayMode ? 'Game Replay' : 'Online Match'}</h2>
                         <p style={{ margin: 0, opacity: 0.6, fontSize: '0.8rem' }}>ID: {gameId}</p>
                     </div>
-                    <span className={`status-badge ${gameStatus}`} style={{ padding: '0.4rem 0.8rem', borderRadius: '1rem', background: gameStatus === 'playing' ? 'rgba(34, 197, 94, 0.2)' : 'rgba(245, 158, 11, 0.2)', border: '1px solid currentColor', color: gameStatus === 'playing' ? '#22c55e' : '#f59e0b', fontSize: '0.75rem', fontWeight: 700 }}>
-                        {gameStatus.toUpperCase()}
+                    <span className={`status-badge ${replayMode ? 'replay' : gameStatus}`} style={{ padding: '0.4rem 0.8rem', borderRadius: '1rem', background: replayMode ? 'rgba(59, 130, 246, 0.2)' : (gameStatus === 'playing' ? 'rgba(34, 197, 94, 0.2)' : 'rgba(245, 158, 11, 0.2)'), border: '1px solid currentColor', color: replayMode ? '#3b82f6' : (gameStatus === 'playing' ? '#22c55e' : '#f59e0b'), fontSize: '0.75rem', fontWeight: 700 }}>
+                        {replayMode ? 'REPLAY' : gameStatus.toUpperCase()}
                     </span>
                 </div>
 
@@ -172,8 +283,9 @@ export default function GamePage() {
                     <div>
                         <ChessGame
                             initialFen={fen}
-                            onMove={handleMove}
+                            onMove={replayMode ? undefined : handleMove}
                             orientation={playerColor || 'white'}
+                            playerColor={playerColor}
                         />
                     </div>
 
@@ -193,6 +305,28 @@ export default function GamePage() {
                                 >
                                     {copied ? 'Copied!' : <><Share2 size={16} /> Copy Invite Link</>}
                                 </button>
+
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                    <button onClick={downloadHistoryJson} className="btn" style={{ flex: 1, fontSize: '0.8rem', background: 'rgba(255,255,255,0.1)' }}>
+                                        Export JSON
+                                    </button>
+                                    <label className="btn" style={{ flex: 1, fontSize: '0.8rem', background: 'rgba(255,255,255,0.1)', textAlign: 'center', cursor: 'pointer' }}>
+                                        Import JSON
+                                        <input type="file" accept=".json" onChange={handleJsonUpload} style={{ display: 'none' }} />
+                                    </label>
+                                </div>
+
+                                {replayMode && (
+                                    <div className="glass-card" style={{ padding: '1rem', background: 'var(--primary)', border: '1px solid var(--primary)' }}>
+                                        <p style={{ textAlign: 'center', marginBottom: '1rem' }}>Replay Controls</p>
+                                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                            <button onClick={backReplay} className="btn" style={{ flex: 1 }}>Prev</button>
+                                            <button onClick={advanceReplay} className="btn" style={{ flex: 1 }}>Next</button>
+                                            <button onClick={exitReplay} className="btn" style={{ flex: 1, background: '#ef4444' }}>Exit</button>
+                                        </div>
+                                        <p style={{ textAlign: 'center', marginTop: '0.5rem', fontSize: '0.8rem' }}>Move {replayIndex + 1} of {replayMoves.length}</p>
+                                    </div>
+                                )}
 
                                 {gameStatus === 'playing' && playerColor && (
                                     <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -220,7 +354,7 @@ export default function GamePage() {
                             <div style={{ marginTop: '2rem' }}>
                                 <h4 style={{ marginBottom: '1rem', opacity: 0.7 }}>Move History</h4>
                                 <div className="move-history" style={{ maxHeight: '300px', overflowY: 'auto', display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.5rem' }}>
-                                    {moves.map((m, i) => (
+                                    {(replayMode ? replayMoves.slice(0, replayIndex + 1) : moves).map((m, i) => (
                                         <div key={i} style={{ padding: '0.5rem', background: 'rgba(255,255,255,0.05)', borderRadius: '6px', fontSize: '0.9rem' }}>
                                             {i % 2 === 0 ? <span style={{ opacity: 0.4, marginRight: '0.5rem' }}>{Math.floor(i / 2) + 1}.</span> : ''}
                                             <span style={{ fontWeight: 600 }}>{m}</span>
