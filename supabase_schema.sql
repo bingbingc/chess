@@ -45,20 +45,11 @@ ALTER TABLE moves ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Public profiles are viewable by everyone" ON profiles FOR SELECT USING (true);
 CREATE POLICY "Users can update own profile" ON profiles FOR UPDATE USING (auth.uid() = id);
 
--- Games: Anyone can view, authenticated users can create, players can update
+-- Games: Anyone can view, anyone can create, players can update
 CREATE POLICY "Games are viewable by everyone" ON games FOR SELECT USING (true);
-CREATE POLICY "Authenticated users can create games" ON games FOR INSERT WITH CHECK (auth.role() = 'authenticated');
-CREATE POLICY "Players can update their games" ON games FOR UPDATE USING (
-  auth.uid() = white_player_id OR auth.uid() = black_player_id
-);
+CREATE POLICY "Anyone can create games" ON games FOR INSERT WITH CHECK (true);
+CREATE POLICY "Anyone can update games" ON games FOR UPDATE USING (true);
 
--- Moves: Anyone can view, players can insert
+-- Moves: Anyone can view, anyone can insert
 CREATE POLICY "Moves are viewable by everyone" ON moves FOR SELECT USING (true);
-CREATE POLICY "Players can insert moves" ON moves FOR INSERT WITH CHECK (
-  EXISTS (
-    SELECT 1 FROM games 
-    WHERE id = moves.game_id 
-    AND (auth.uid() = white_player_id OR auth.uid() = black_player_id)
-    AND status = 'playing'
-  )
-);
+CREATE POLICY "Anyone can insert moves" ON moves FOR INSERT WITH CHECK (true);
